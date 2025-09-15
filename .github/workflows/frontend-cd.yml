@@ -2,10 +2,13 @@ name: CD - Deploy Frontend to AKS
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Frontend CI - Build & Push Image"]
-    types: [completed]
-
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - 'k8s/**'
+      - '.github/workflows/frontend-cd.yml'
 jobs:
   deploy_frontend:
     runs-on: ubuntu-latest
