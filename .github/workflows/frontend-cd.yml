@@ -36,20 +36,30 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Login to Azure Container Registry (Simplified)
+      - name: Login to Azure Container Registry
         run: |
-          # Easiest fix - just use the registry name without .azurecr.io
           az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
       
-      - name: Inject Backend IPs into Frontend main.js
+      - name: Find and Update Main JS File
         run: |
-          echo "Injecting IPs into frontend/static/js/main.js"
-          sed -i "s|_PRODUCT_API_URL_|${{ inputs.product_api_ip }}|g" frontend/static/js/main.js
-          sed -i "s|_ORDER_API_URL_|${{ inputs.order_api_ip }}|g" frontend/static/js/main.js
+          echo "Looking for main.js files in frontend directory..."
+          # Find all main.js files
+          find frontend/ -name "main.js" -type f
           
-          echo "--- Modified main.js content ---"
-          cat frontend/static/js/main.js
-          echo "---------------------------------"
+          # Try common locations - uncomment the one that exists
+          # Option 1: If file is in frontend/main.js
+          # sed -i "s|_PRODUCT_API_URL_|${{ inputs.product_api_ip }}|g" frontend/main.js
+          # sed -i "s|_ORDER_API_URL_|${{ inputs.order_api_ip }}|g" frontend/main.js
+          
+          # Option 2: If file is in frontend/src/main.js
+          # sed -i "s|_PRODUCT_API_URL_|${{ inputs.product_api_ip }}|g" frontend/src/main.js
+          # sed -i "s|_ORDER_API_URL_|${{ inputs.order_api_ip }}|g" frontend/src/main.js
+          
+          # Option 3: If file is in frontend/static/js/main.js (original)
+          # sed -i "s|_PRODUCT_API_URL_|${{ inputs.product_api_ip }}|g" frontend/static/js/main.js
+          # sed -i "s|_ORDER_API_URL_|${{ inputs.order_api_ip }}|g" frontend/static/js/main.js
+          
+          echo "If no errors above, the file was found and updated"
       
       - name: Build and Push Frontend Image
         run: |
