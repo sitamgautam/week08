@@ -23,4 +23,8 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main'
     steps:
+<<<<<<< HEAD
       - run: echo "Deploying to production"
+=======
+      - run: echo "Deploying to production"
+>>>>>>> 647ca391fc0d774b193efdc035dda34ec610b1c2
