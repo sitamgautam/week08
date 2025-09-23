@@ -1,0 +1,52 @@
+name: Manual Deploy to Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: 'Docker image tag to deploy (e.g., abc123)'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to ${{ github.event.inputs.environment }}
+      run: |
+        echo "Deploying to ${{ github.event.inputs.environment }} environment"
+        echo "Using image tag: ${{ github.event.inputs.image_tag }}"
+        
+        # Set Kubernetes context based on environment
+        if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+          az aks get-credentials --resource-group sit722-week8-rg --name sit722-week8-aks --overwrite-existing
+        else
+          az aks get-credentials --resource-group sit722-week8-staging-rg --name sit722-week8-staging-aks --overwrite-existing
+        fi
+        
+        # Update deployment with new image
+        kubectl set image deployment/product-service product-service=${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:${{ github.event.inputs.image_tag }}
+        
+        # Verify deployment
+        kubectl rollout status deployment/product-service --timeout=300s
+
+    - name: Logout from Azure
+      run: az logout
+      if: always()

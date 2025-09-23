@@ -1,0 +1,123 @@
+name: Full CI/CD Pipeline
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [main]
+
+env:
+  ACR_LOGIN_SERVER: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  test_backend:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
+    
+    services:
+      product_db:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: products
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        pip install -r backend/product_service/requirements.txt
+        pip install pytest
+
+    - name: Run tests
+      working-directory: backend/product_service
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: products
+      run: |
+        pytest tests/ -v
+
+  build_backend:
+    runs-on: ubuntu-latest
+    needs: test_backend
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Build and Push Docker images
+      run: |
+        # Login to ACR
+        az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+        
+        # Build with both commit SHA and latest tags
+        docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:${{ github.sha }} ./backend/product_service/
+        docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:latest ./backend/product_service/
+        
+        # Push both tags
+        docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:${{ github.sha }}
+        docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:latest
+
+    - name: Logout from Azure
+      run: az logout
+      if: always()
+
+  deploy_staging:
+    runs-on: ubuntu-latest
+    needs: build_backend
+    environment: staging
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Staging AKS
+      run: |
+        az aks get-credentials --resource-group my-staging-rg --name my-staging-aks --overwrite-existing
+        kubectl set image deployment/product-service product-service=${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:${{ github.sha }}
+
+  deploy_production:
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Production AKS
+      run: |
+        az aks get-credentials --resource-group my-prod-rg --name my-prod-aks --overwrite-existing
+        kubectl set image deployment/product-service product-service=${{ secrets.AZURE_CONTAINER_REGISTRY }}.azurecr.io/product_service:${{ github.sha }}
