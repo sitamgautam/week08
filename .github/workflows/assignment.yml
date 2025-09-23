@@ -1,0 +1,44 @@
+name: Assignment CI - Build and Push to ACR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  ACR_NAME: sit722week8acr
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Login to ACR
+      run: az acr login --name ${{ env.ACR_NAME }}
+
+    - name: Build Product Service
+      run: |
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/product_service:latest ./backend/product_service/
+        docker push ${{ env.ACR_NAME }}.azurecr.io/product_service:latest
+
+    - name: Build Order Service  
+      run: |
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/order_service:latest ./backend/order_service/
+        docker push ${{ env.ACR_NAME }}.azurecr.io/order_service:latest
+
+    - name: Build Frontend
+      run: |
+        docker build -t ${{ env.ACR_NAME }}.azurecr.io/frontend:latest ./frontend/
+        docker push ${{ env.ACR_NAME }}.azurecr.io/frontend:latest
+
+    - name: Logout from Azure
+      run: az logout
+      if: always()
